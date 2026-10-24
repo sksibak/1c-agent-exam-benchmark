@@ -108,7 +108,7 @@ function renderSteps(readiness) {
     if (s.options) {
       const select = node('select', null, 'field');
       select.setAttribute('aria-label', s.title);
-      select.append(...s.options.map(o => { const opt = node('option', o.label); opt.value = o.value; return opt; }));
+      select.append(...s.options.map(o => { const opt = node('option', o.label); opt.value = o.value; opt.disabled = !!o.disabled; return opt; }));
       select.value = s.selected;
       select.addEventListener('change', () => perform(() => post('api/readiness/select', {[s.select_key || s.id]: select.value})));
       body.append(select);
@@ -154,9 +154,8 @@ function renderSteps(readiness) {
 function renderLaunch(readiness, demo) {
   const harnesses = readiness.steps.find(s => s.id === 'harnesses')?.items || [];
   const agent = readiness.steps.find(s => s.id === 'agent');
-  const claude = agent?.selected === 'claude';
   const options = [{id: 'none', label: 'Без харнеса', ready: true}, ...harnesses.filter(h => h.state !== 'unavailable')
-    .map(h => ({id: h.id, label: h.label + (claude ? ' — пока только для Codex' : ''), ready: h.state === 'ready' && !claude}))];
+    .map(h => ({id: h.id, label: h.label, ready: h.state === 'ready'}))];
   const signature = JSON.stringify(options);
   if ($('harness').dataset.signature !== signature) {
     const wanted = $('harness').dataset.signature ? $('harness').value : store.get('harness');

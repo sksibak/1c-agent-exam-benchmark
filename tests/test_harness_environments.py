@@ -92,6 +92,7 @@ class RuntimeCapabilityGateTest(unittest.TestCase):
         from exam_bench.preflight import verify_runtime_capability
         from exam_bench.codex import project_configuration_fingerprint
         from exam_bench.harness import ROOT,profile_path
+        (ROOT/'.local').mkdir(exist_ok=True)  # a fresh clone has no .local yet
         with tempfile.TemporaryDirectory(prefix='runtime-gate-',dir=ROOT/'.local') as td:
             directory=Path(td);evidence=directory/'evidence.json';receipt=directory/'capability.json'
             write_json(evidence,{'reply':{'ok':True,'cache':{'mode':'applied','events':['BuildCompleted']}}})

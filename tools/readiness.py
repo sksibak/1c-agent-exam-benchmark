@@ -287,7 +287,7 @@ def agent_step(root, pick, running, current):
                     'В терминале выполните claude setup-token, войдите в браузере и вставьте выданный токен сюда. '
                     'Нужна подписка Claude. Токен хранится только в .local/ на этом компьютере.',
                     copy='claude setup-token', input={'action': 'claude-token', 'placeholder': 'sk-ant-oat…', 'label': 'Сохранить токен'}, **common)
-    return step('agent', title, 'ok', 'Claude Code найден, токен сохранён. Пока только без харнеса.', pick['claude'],
+    return step('agent', title, 'ok', 'Claude Code найден, токен сохранён.', pick['claude'],
                 [('forget-claude', 'Удалить токен', {})], **common)
 
 

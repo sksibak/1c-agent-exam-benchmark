@@ -10,6 +10,7 @@ it is readable by the solver's shell (known gap, recorded in client-profile.json
 import json
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from .harness import verify_package, stop_owned_runtimes, is_unica
 from .materials import solver_prompt, verify_delivery_plan
 from .mcp_toolkit import NAME as TOOLKIT
 from .stdio_harnesses import is_stdio_harness
+from .runtime import platform_binary, cache_directory, child_environment, machine_identity, require_execution_mode, settings
 
 DENIED_TOOLS = ('WebSearch', 'WebFetch', 'Task', 'Agent')
 SETTINGS = {'permissions': {'defaultMode': 'bypassPermissions', 'deny': list(DENIED_TOOLS)},
@@ -45,6 +47,22 @@ def configure(name, ws, runtime, run):
     skills_root.mkdir(exist_ok=True)
     if name == 'none':
         return {'name': 'none', 'mcp_servers': [], 'additional_skills': []}, None
+    from .portable_harnesses import available, configure as configure_portable, entry, spec
+    if available(name) and name != TOOLKIT:
+        # The same pinned package as for Codex, registered the Claude Code way.
+        harness, _ = configure_portable(name, ws, runtime, run)
+        # Claude Code discovers skills one level deep: copy each skill next to the author tree,
+        # so relative references to sibling folders (../references) keep working.
+        tree = skills_root / name
+        for skill in sorted(tree.glob('*/SKILL.md')) if tree.is_dir() else []:
+            if not (skills_root / skill.parent.name).exists():
+                shutil.copytree(skill.parent, skills_root / skill.parent.name)
+        value = entry(name)
+        if not value.get('server'):
+            return harness, None
+        command, args, env = spec(name, ws, runtime, Path(harness['package_path']))
+        write_json(runtime / 'mcp.json', {'mcpServers': {value['server']: {'type': 'stdio', 'command': command, 'args': args, 'env': env}}})
+        return harness, runtime / 'mcp.json'
     if is_stdio_harness(name):
         from .stdio_harnesses import configure as configure_stdio
         return configure_stdio(name, ws, runtime, run, 'claude')
@@ -63,17 +81,17 @@ def configure(name, ws, runtime, run):
         binary.mkdir()
         for exe in ('python', 'python3'):
             path = binary / exe
-            path.write_text('#!/bin/sh\nexec /opt/homebrew/bin/python3.12 "$@"\n', encoding='utf-8')
+            path.write_text('#!/bin/sh\nexec ' + json.dumps(sys.executable) + ' "$@"\n', encoding='utf-8')
             path.chmod(0o755)
         if (ws / 'ib').exists():
-            write_json(ws / '.v8-project.json', {'v8path': '/opt/1cv8/8.3.27.2074/1cv8',
+            write_json(ws / '.v8-project.json', {'v8path': platform_binary(False),
                        'databases': [{'id': 'origin', 'name': 'Benchmark worker', 'type': 'file', 'path': str(ws / 'ib'),
                                       'aliases': ['origin', 'dev'], 'configSrc': str(ws / 'out/src')}]})
         write_json(run / 'shirokov-package-manifest.json', tree_manifest(ws / '.codex'))
         skills = sorted(p.parent.name for p in (ws / '.codex/skills').glob('*/SKILL.md'))
         return {'name': 'shirokov-skills', 'registration': 'author Python port (same as Codex); exact skills in the isolated Claude user skill root',
                 'mcp_servers': [], 'additional_skills': skills, 'source_commit': json.loads((source / 'provenance.json').read_text(encoding='utf-8'))['commit'],
-                'worker_env': {'PATH': str(binary) + ':/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+                'worker_env': {'PATH': os.pathsep.join([str(binary), str(Path(sys.executable).parent), os.environ.get('PATH', '')]),
                                'PYTHONPATH': str(runtime / 'python-site-packages'), 'PYTHONDONTWRITEBYTECODE': '1',
                                'PLAYWRIGHT_BROWSERS_PATH': str(ws / '.local/playwright')}}, None
     if not is_unica(name):
@@ -106,10 +124,39 @@ def configure(name, ws, runtime, run):
             'mcp_servers': ['unica'], 'additional_skills': skills, 'runtime_manifest_sha256': digest(package / 'runtime-manifest.json')}, runtime / 'mcp.json'
 
 
+def worker_environment(ws, runtime, harness):
+    """The host allowlist shared with Codex plus what Claude Code itself needs on each OS."""
+    env = child_environment(ws)
+    env.update({'CLAUDE_CODE_TMPDIR': str(ws / 'tmp'), 'CLAUDE_CONFIG_DIR': str(runtime), 'DISABLE_AUTOUPDATER': '1',
+                'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1', 'DISABLE_TELEMETRY': '1', 'DISABLE_ERROR_REPORTING': '1'})
+    # A path to extra CA certificates (TLS interception by an antivirus or proxy); not a secret.
+    if os.environ.get('NODE_EXTRA_CA_CERTS'):
+        env['NODE_EXTRA_CA_CERTS'] = os.environ['NODE_EXTRA_CA_CERTS']
+    if os.name == 'nt':
+        # Claude Code on Windows runs its shell tool through Git Bash.
+        bash = os.environ.get('CLAUDE_CODE_GIT_BASH_PATH') or next(
+            (str(p) for p in ([Path(shutil.which('git')).resolve().parents[1] / 'bin/bash.exe'] if shutil.which('git') else [])
+             + [Path(os.environ.get(k, ''), 'Git/bin/bash.exe') for k in ('ProgramFiles', 'ProgramW6432')] if p.is_file()), None)
+        if bash:
+            env['CLAUDE_CODE_GIT_BASH_PATH'] = bash
+    env.update(harness.get('worker_env', {}))
+    if 'HOME' in os.environ:
+        env['HOME'] = os.environ['HOME']
+    return env
+
+
 def prepare(plan, run, starter, task, client, auth_seed, starter_dt=None):
     from .preflight import validate_plan
     from .codex import bootstrap_lock, worker_document
     validate_plan(plan)
+    if Path(run).exists():
+        raise FileExistsError(run)
+    require_execution_mode()
+    if plan.get('machine') is not None and plan['machine'] != machine_identity():
+        raise ValueError('Machine settings differ from the pinned plan')
+    from .portable_harnesses import available as portable_harness
+    if settings()['isolation'] != 'macos' and plan['harness'] != 'none' and not portable_harness(plan['harness']):
+        raise ValueError('Outside macOS only harnesses prepared from harnesses/ are supported')
     run = Path(run).resolve()
     run.mkdir(parents=True, exist_ok=False)
     verify_delivery_plan(plan, task)
@@ -125,17 +172,18 @@ def prepare(plan, run, starter, task, client, auth_seed, starter_dt=None):
     cache_paths = []
     if starter_dt is not None:
         from .platform import OneC
-        cache_parent = Path.home() / '.1cv82/1C/1Cv82'
+        cache_parent = cache_directory()
+        cache_parent.mkdir(parents=True, exist_ok=True)
         lock_path = cache_parent / '.exam-benchmark-bootstrap.lock'
         with bootstrap_lock(lock_path):
             before = set(cache_parent.iterdir())
-            adapter = OneC('/opt/1cv8/8.3.27.2074/1cv8', run / 'worker-bootstrap', 90)
+            adapter = OneC(platform_binary(), run / 'worker-bootstrap', 90)
             adapter.restore(ws / 'ib', starter_dt)
             adapter.export(ws / 'ib', ws / 'bootstrap-export')
             cache_paths = [str(p.resolve()) for p in set(cache_parent.iterdir()) - before if p.is_dir()]
             write_json(run / 'worker-bootstrap/cache-allocation.json', {'before': [str(p) for p in sorted(before)],
                        'new_directories': cache_paths, 'shared_host_lock': str(lock_path)})
-            if len(cache_paths) != 1:
+            if settings()['isolation'] != 'dedicated-host' and len(cache_paths) != 1:
                 raise ValueError('Cannot uniquely identify the new worker platform cache namespace')
         write_json(ws / 'platform-cache-grant.json', {'paths': cache_paths, 'owner': 'new benchmark worker only'})
         shutil.rmtree(ws / 'bootstrap-export')
@@ -172,12 +220,19 @@ def prepare(plan, run, starter, task, client, auth_seed, starter_dt=None):
     argv += ['--strict-mcp-config']
     if mcp_config is not None:
         argv += ['--mcp-config', str(mcp_config)]
-    env = {'PATH': '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin', 'LANG': 'en_US.UTF-8', 'TMPDIR': str(ws / 'tmp'), 'CLAUDE_CODE_TMPDIR': str(ws / 'tmp'),
-           'TMPPREFIX': str(ws / 'tmp/zsh'), 'CLAUDE_CONFIG_DIR': str(runtime), 'DISABLE_AUTOUPDATER': '1',
-           'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1', 'DISABLE_TELEMETRY': '1', 'DISABLE_ERROR_REPORTING': '1'}
-    env.update(harness.get('worker_env', {}))
-    if 'HOME' in os.environ:
-        env['HOME'] = os.environ['HOME']
+    env = worker_environment(ws, runtime, harness)
+    if starter_dt is not None:
+        # Prove that this worker can operate 1C before the token is added or the solve budget is spent.
+        export = ws / 'platform-capability-export'
+        export.mkdir()
+        capability = supervise(wrapped([platform_binary(), 'DESIGNER', '/F', str(ws / 'ib'), '/DumpConfigToFiles', str(export),
+                                        '/DisableStartupMessages', '/DisableStartupDialogs', '/Out', str(ws / 'platform-capability.log')], ws),
+                               ws, env, '', 90, 3, run / 'worker-platform-capability')
+        capability['configuration_exported'] = (export / 'Configuration.xml').is_file()
+        write_json(run / 'worker-platform-capability.json', capability)
+        if capability['status'] != 'completed' or not capability['stop_confirmed'] or not capability['configuration_exported']:
+            raise ValueError('1C is unavailable inside the selected worker boundary; see worker-platform-capability.json')
+        shutil.rmtree(export)
     write_json(run / 'plan.json', plan)
     write_json(run / 'plan-integrity.json', {'sha256': digest(run / 'plan.json')})
     write_json(run / 'client-profile.json', {'argv': argv, 'denied_tools': list(DENIED_TOOLS), 'settings': SETTINGS, 'web_search': 'disabled',
@@ -260,18 +315,29 @@ def start(plan, run, starter, task, client, auth_seed, prompt=None, starter_dt=N
     start_at = utc()
     prompt = solver_prompt(plan, prompt)
     write_json(run / 'solver-prompt.json', {'prompt': prompt, 'input_revision': plan['input_revision']})
-    if plan['harness'] == TOOLKIT:
-        from .mcp_toolkit import launch
-        # The 1C client never gets the agent's credential.
-        launch(ws, {k: v for k, v in env.items() if k != 'CLAUDE_CODE_OAUTH_TOKEN'}, run)
-    if is_stdio_harness(plan['harness']):
-        from .stdio_harnesses import launch as launch_stdio
-        launch_stdio(plan['harness'], ws, {k: v for k, v in env.items() if k != 'CLAUDE_CODE_OAUTH_TOKEN'}, run)
+    from .codex import portable_harness_run
+    # Helpers (the 1C client, MCP daemons) never get the agent's credential.
+    helper_env = {k: v for k, v in env.items() if k != 'CLAUDE_CODE_OAUTH_TOKEN'}
+    portable = portable_harness_run(run)
     try:
+        if portable:
+            from .portable_harnesses import launch as launch_portable
+            launch_portable(ws, helper_env, run)
+        elif plan['harness'] == TOOLKIT:
+            from .mcp_toolkit import launch
+            launch(ws, helper_env, run)
+        elif is_stdio_harness(plan['harness']):
+            from .stdio_harnesses import launch as launch_stdio
+            launch_stdio(plan['harness'], ws, helper_env, run)
         outcome = supervise(wrapped(argv, ws), ws, env, prompt, plan['solve_timeout_seconds'], plan['stop_grace_seconds'], run / 'raw')
     finally:
         env.pop('CLAUDE_CODE_OAUTH_TOKEN', None)
-    if is_stdio_harness(plan['harness']):
+        if portable:
+            from .portable_harnesses import stop as stop_portable
+            write_json(run / 'runtime-cleanup.json', cleanup_portable := stop_portable(ws))
+    if portable:
+        outcome['stop_confirmed'] = outcome['stop_confirmed'] and cleanup_portable['stop_confirmed']
+    elif is_stdio_harness(plan['harness']):
         from .stdio_harnesses import stop as stop_stdio
         cleanup = stop_stdio(plan['harness'], ws, env, plan['stop_grace_seconds'])
         write_json(run / 'runtime-cleanup.json', cleanup)
@@ -281,14 +347,22 @@ def start(plan, run, starter, task, client, auth_seed, prompt=None, starter_dt=N
         cleanup = stop(ws, plan['stop_grace_seconds'])
         write_json(run / 'runtime-cleanup.json', cleanup)
         outcome['stop_confirmed'] = outcome['stop_confirmed'] and cleanup['stop_confirmed']
-    if is_unica(plan['harness']):
+    if is_unica(plan['harness']) and not portable:
         cleanup = stop_owned_runtimes(ws, plan['stop_grace_seconds'])
         write_json(run / 'runtime-cleanup.json', cleanup)
         outcome['stop_confirmed'] = outcome['stop_confirmed'] and cleanup['stop_confirmed']
     write_json(run / 'process.json', outcome)
     parsed = normalize((run / 'raw' / 'stdout.jsonl').read_text(errors='replace', encoding='utf-8').splitlines())
     metrics = {k: v for k, v in parsed.items() if k != 'events'}
-    if is_unica(plan['harness']):
+    if settings()['isolation'] == 'dedicated-host':
+        metrics['limitations'].append('Dedicated-host execution: no outer filesystem/network sandbox; not eligible for comparison')
+    if portable:
+        from .portable_harnesses import integrity
+        unchanged = integrity(ws, run)
+        write_json(run / 'harness-integrity.json', {'package_unchanged': unchanged})
+        if not unchanged:
+            metrics['limitations'].append('Solver changed the pinned native harness package')
+    elif is_unica(plan['harness']):
         unchanged = tree_manifest(ws / 'harness/unica') == json.loads((run / 'unica-package-manifest.json').read_text(encoding='utf-8'))
         write_json(run / 'harness-integrity.json', {'package_unchanged': unchanged})
         if not unchanged:
@@ -337,5 +411,8 @@ def start(plan, run, starter, task, client, auth_seed, prompt=None, starter_dt=N
                           'quota_before': None, 'quota_after': None, 'reason': 'Subscription; API equivalent is the client-reported total_cost_usd'},
               'submission': {'valid': error is None, 'adapter_compatible': adapter_compatible, 'error': error, 'ignored_binding_sections': ignored, 'files': len(manifest) if manifest is not None else None},
               'grade': {'scope': 'technical_partial', 'whole_ticket': 'not_evaluated', 'rules': [], 'status': 'not_run'}, 'comparison_eligible': False}
+    machine = machine_identity()
+    result['machine'] = machine
+    result['isolation_verified'] = machine['isolation'] in ('macos', 'bubblewrap')
     write_json(run / 'result.json', result)
     return result

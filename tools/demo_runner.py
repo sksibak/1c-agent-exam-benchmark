@@ -285,25 +285,23 @@ class Controller:
                 'job': state, 'results': publication(self.root)['results'], 'harnesses': harness_options(self.root)}
 
     def start(self, mode, harness='none', hours=None, model=None):
-        # The agent, its executable and credential come from discovery on this machine, never from HTTP.
-        from tools.readiness import agent_client
-        agent = agent_client(self.root) if mode == 'run' else ('codex', None, None)
-        if agent is None:
-            raise ValueError('Агент не готов: завершите шаг «Агент» на странице «Замер»')
-        if agent[0] == 'claude' and harness != 'none':
-            raise ValueError('Claude Code пока запускается только без харнеса')
-        from tools.readiness import agents, model_allowed
-        if mode == 'run':
-            model = model or agents()[agent[0]]['default_model']
-            if not model_allowed(agent[0], model):
-                raise ValueError('Эта модель не предлагается для выбранного агента')
         from exam_bench.locking import file_lock
+        from tools.readiness import agent_client, agents, model_allowed
         if mode not in ('run', 'regrade'):
             raise ValueError('Unknown demo action')
         with self.lock, file_lock(self.root / '.local/demo/start.lock'):
+            # A running attempt is reported first: nothing else matters until it ends.
             state = self.snapshot()['job']
             if state and state['phase'] in ACTIVE:
                 raise RuntimeError('Прогон уже выполняется')
+            # The agent, its executable and credential come from discovery on this machine, never from HTTP.
+            agent = agent_client(self.root) if mode == 'run' else ('codex', None, None)
+            if agent is None:
+                raise ValueError('Агент не готов: завершите шаг «Агент» на странице «Замер»')
+            if mode == 'run':
+                model = model or agents()[agent[0]]['default_model']
+                if not model_allowed(agent[0], model):
+                    raise ValueError('Эта модель не предлагается для выбранного агента')
             cfg, _ = prerequisites(self.root, fresh=mode == 'run')
             if mode == 'regrade':
                 harness = 'none'

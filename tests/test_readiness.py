@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -60,6 +61,7 @@ class Readiness(unittest.TestCase):
         for agent in readiness.agents().values():
             self.assertIn(agent['default_model'], [m['id'] for m in agent['models']])
 
+    @unittest.skipIf(os.name == 'nt', 'Builds POSIX paths; Windows cannot instantiate PosixPath')
     def test_version_comes_from_path_and_exam_platform_is_preferred(self):
         found = [Path('/opt/1cv8/8.5.4.1878/1cv8'), Path('/opt/1cv8/8.3.27.2074/1cv8')]
         with patch.object(Path, 'glob', lambda self, pattern: found if pattern == '*/1cv8' else []), \
