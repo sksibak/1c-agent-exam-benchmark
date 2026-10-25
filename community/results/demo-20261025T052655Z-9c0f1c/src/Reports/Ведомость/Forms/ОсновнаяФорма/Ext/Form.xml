@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Form xmlns="http://v8.1c.ru/8.3/xcf/logform" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" xmlns:dcscor="http://v8.1c.ru/8.1/data-composition-system/core" xmlns:dcssch="http://v8.1c.ru/8.1/data-composition-system/schema" xmlns:dcsset="http://v8.1c.ru/8.1/data-composition-system/settings" xmlns:ent="http://v8.1c.ru/8.1/data/enterprise" xmlns:lf="http://v8.1c.ru/8.2/managed-application/logform" xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:v8="http://v8.1c.ru/8.1/data/core" xmlns:v8ui="http://v8.1c.ru/8.1/data/ui" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.20">
+	<ReportFormType>Main</ReportFormType>
+	<AutoShowState>Auto</AutoShowState>
+	<ReportResultViewMode>Auto</ReportResultViewMode>
+	<ViewModeApplicationOnSetReportResult>Auto</ViewModeApplicationOnSetReportResult>
+	<AutoCommandBar name="ФормаКоманднаяПанель" id="-1"/>
+	<Events>
+		<Event name="OnCreateAtServer">ПриСозданииНаСервере</Event>
+	</Events>
+	<Attributes>
+		<Attribute name="Объект" id="1">
+			<Type>
+				<v8:Type>cfg:ReportObject.Ведомость</v8:Type>
+			</Type>
+			<MainAttribute>true</MainAttribute>
+		</Attribute>
+		<Attribute name="НачалоПериода" id="1001">
+			<Type>
+				<v8:Type>xs:dateTime</v8:Type>
+			</Type>
+		</Attribute>
+		<Attribute name="КонецПериода" id="1002">
+			<Type>
+				<v8:Type>xs:dateTime</v8:Type>
+			</Type>
+		</Attribute>
+		<Attribute name="Подразделение" id="1003">
+			<Type>
+				<v8:Type>cfg:CatalogRef.Подразделения</v8:Type>
+			</Type>
+		</Attribute>
+		<Attribute name="ВидХарактеристики" id="1004">
+			<Type>
+				<v8:Type>cfg:ChartOfCharacteristicTypesRef.СвойстваОбъектов</v8:Type>
+			</Type>
+		</Attribute>
+	<Attribute name="Результат" id="1000"><Type><v8:Type>v8ui:SpreadsheetDocument</v8:Type></Type></Attribute></Attributes>
+	<Commands>
+		<Command name="Сформировать" id="1">
+			<Title>
+				<v8:item>
+					<v8:lang>ru</v8:lang>
+					<v8:content>Сформировать</v8:content>
+				</v8:item>
+			</Title>
+			<Shortcut>F5</Shortcut>
+			<Action>Сформировать</Action>
+		</Command>
+	</Commands>
+<ChildItems><InputField name="НачалоПериода" id="1001">
+	<DataPath>НачалоПериода</DataPath>
+	<Title>
+		<v8:item>
+			<v8:lang>ru</v8:lang>
+			<v8:content>С</v8:content>
+		</v8:item>
+	</Title>
+	<ContextMenu name="НачалоПериодаКонтекстноеМеню" id="1002"/>
+	<ExtendedTooltip name="НачалоПериодаРасширеннаяПодсказка" id="1003"/>
+</InputField>
+<InputField name="КонецПериода" id="1004">
+	<DataPath>КонецПериода</DataPath>
+	<Title>
+		<v8:item>
+			<v8:lang>ru</v8:lang>
+			<v8:content>По</v8:content>
+		</v8:item>
+	</Title>
+	<ContextMenu name="КонецПериодаКонтекстноеМеню" id="1005"/>
+	<ExtendedTooltip name="КонецПериодаРасширеннаяПодсказка" id="1006"/>
+</InputField>
+<InputField name="Подразделение" id="1007">
+	<DataPath>Подразделение</DataPath>
+	<ContextMenu name="ПодразделениеКонтекстноеМеню" id="1008"/>
+	<ExtendedTooltip name="ПодразделениеРасширеннаяПодсказка" id="1009"/>
+</InputField>
+<InputField name="ВидХарактеристики" id="1012">
+	<DataPath>ВидХарактеристики</DataPath>
+	<Title>
+		<v8:item>
+			<v8:lang>ru</v8:lang>
+			<v8:content>Характеристика</v8:content>
+		</v8:item>
+	</Title>
+	<ContextMenu name="ВидХарактеристикиКонтекстноеМеню" id="1013"/>
+	<ExtendedTooltip name="ВидХарактеристикиРасширеннаяПодсказка" id="1014"/>
+</InputField>
+<Button name="Сформировать" id="1010">
+	<CommandName>Form.Command.Сформировать</CommandName>
+	<DefaultButton>true</DefaultButton>
+	<ExtendedTooltip name="СформироватьРасширеннаяПодсказка" id="1011"/>
+</Button>
+<SpreadsheetDocumentField name="Результат" id="1000"><DataPath>Результат</DataPath><ReadOnly>true</ReadOnly><HorizontalStretch>true</HorizontalStretch><VerticalStretch>true</VerticalStretch></SpreadsheetDocumentField></ChildItems></Form>

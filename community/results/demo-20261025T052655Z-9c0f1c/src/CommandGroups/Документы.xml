@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses" xmlns:v8="http://v8.1c.ru/8.1/data/core" version="2.20">
+  <CommandGroup uuid="e8a84592-9b47-4870-8b08-b9ef10ebca5e">
+    <Properties>
+      <Name>Документы</Name>
+      <Synonym>
+        <v8:item>
+          <v8:lang>ru</v8:lang>
+          <v8:content>Документы</v8:content>
+        </v8:item>
+      </Synonym>
+      <Comment></Comment>
+      <Representation>Auto</Representation>
+      <ToolTip></ToolTip>
+      <Picture></Picture>
+      <Category>NavigationPanel</Category>
+    </Properties>
+  </CommandGroup>
+</MetaDataObject>
